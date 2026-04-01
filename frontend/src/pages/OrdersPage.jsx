@@ -24,6 +24,7 @@ const toNumberOrEmpty = (value) => (value === '' ? '' : Number(value))
 export default function OrdersPage() {
   const [orders, setOrders] = useState([])
   const [products, setProducts] = useState([])
+  const [productSearch, setProductSearch] = useState('')
   const [resellers, setResellers] = useState([])
   const [page, setPage] = useState(1)
   const [meta, setMeta] = useState({ total_pages: 1 })
@@ -35,6 +36,7 @@ export default function OrdersPage() {
   const [search, setSearch] = useState('')
   const [filterResellerId, setFilterResellerId] = useState('')
   const debouncedSearch = useDebounce(search, 1000)
+  const debouncedProductSearch = useDebounce(productSearch, 500)
 
   const load = useCallback(() => {
     const query = new URLSearchParams({
@@ -51,9 +53,16 @@ export default function OrdersPage() {
   useEffect(() => { load() }, [load])
   useEffect(() => { setPage(1) }, [debouncedSearch])
   useEffect(() => {
-    api.get('/products.php?page=1&limit=100').then((r) => setProducts(r.data.data))
     api.get('/resellers.php?page=1&limit=100').then((r) => setResellers(r.data.data))
   }, [])
+  useEffect(() => {
+    const query = new URLSearchParams({
+      page: '1',
+      limit: '100',
+      q: debouncedProductSearch,
+    }).toString()
+    api.get(`/products.php?${query}`).then((r) => setProducts(r.data.data || []))
+  }, [debouncedProductSearch])
 
   const save = async (e) => {
     e.preventDefault()
@@ -89,7 +98,7 @@ export default function OrdersPage() {
       payment_status: d.payment_status || 'belum_lunas',
       payment_days_total: Number(d.payment_days_total || 0),
       amount_paid: Number(d.amount_paid || 0),
-      items: (d.items || []).map((it) => ({ product_id: String(it.product_id), qty: Number(it.qty) })),
+      items: (d.items || []).map((it) => ({ product_id: String(it.product_id), product_name: it.product_name || '', qty: Number(it.qty) })),
     })
     setMode('edit')
     setOpenForm(true)
@@ -250,10 +259,16 @@ export default function OrdersPage() {
                 isSearchable
                 placeholder="Pilih Produk"
                 options={productOptions}
-                value={productOptions.find((opt) => opt.value === String(it.product_id)) || null}
+                value={productOptions.find((opt) => opt.value === String(it.product_id)) || (it.product_id ? { value: String(it.product_id), label: it.product_name || `Produk #${it.product_id}` } : null)}
+                onInputChange={(inputValue, meta) => {
+                  if (meta.action === 'input-change') {
+                    setProductSearch(inputValue)
+                  }
+                }}
                 onChange={(selected) => {
                   const next = [...form.items]
                   next[idx].product_id = selected?.value || ''
+                  next[idx].product_name = selected?.label || ''
                   setForm({ ...form, items: next })
                 }}
                 classNamePrefix="react-select"

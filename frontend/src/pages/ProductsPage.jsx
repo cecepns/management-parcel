@@ -14,7 +14,11 @@ const API_ORIGIN = import.meta.env.VITE_API_ORIGIN || 'https://api.isavralabel.c
 const toImageUrl = (path) => {
   if (!path) return ''
   if (path.startsWith('http://') || path.startsWith('https://')) return path
-  return `${API_ORIGIN}${path.startsWith('/') ? path : `/${path}`}`
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  if (normalizedPath.startsWith('/uploads/')) {
+    return `${API_ORIGIN}/api${normalizedPath}`
+  }
+  return `${API_ORIGIN}${normalizedPath}`
 }
 
 export default function ProductsPage() {
