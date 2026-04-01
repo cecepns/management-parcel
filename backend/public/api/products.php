@@ -3,7 +3,7 @@ require_once __DIR__ . '/_bootstrap.php';
 auth_user_id();
 
 $page = max(1, (int)($_GET['page'] ?? 1));
-$limit = min(10, max(1, (int)($_GET['limit'] ?? 10)));
+$limit = min(100, max(1, (int)($_GET['limit'] ?? 10)));
 $offset = ($page - 1) * $limit;
 $q = trim($_GET['q'] ?? '');
 

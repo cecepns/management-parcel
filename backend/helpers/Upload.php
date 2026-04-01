@@ -2,7 +2,14 @@
 
 function product_upload_dir(): string
 {
-    return __DIR__ . '/../public/uploads/products';
+    $root = dirname(__DIR__);
+    // Paksa konsisten ke uploads root (tanpa folder public).
+    return $root . '/uploads/products';
+}
+
+function product_upload_public_prefix(): string
+{
+    return '/uploads/products/';
 }
 
 function upload_product_image(array $file): ?string
@@ -20,7 +27,7 @@ function upload_product_image(array $file): ?string
     if (!move_uploaded_file($file['tmp_name'], $target)) {
         return null;
     }
-    return '/uploads/products/' . $name;
+    return product_upload_public_prefix() . $name;
 }
 
 function unlink_product_image(?string $path): void
@@ -30,14 +37,20 @@ function unlink_product_image(?string $path): void
     }
 
     $cleanPath = ltrim($path, '/');
-    $publicPath = __DIR__ . '/../public/' . $cleanPath;
-    $legacyPath = __DIR__ . '/../' . $cleanPath;
-
-    if (is_file($publicPath)) {
-        unlink($publicPath);
+    $root = dirname(__DIR__);
+    $paths = [
+        $root . '/public/' . $cleanPath,
+        $root . '/' . $cleanPath,
+    ];
+    if (str_starts_with($cleanPath, 'api/')) {
+        $paths[] = $root . '/' . substr($cleanPath, 4);
+    } else {
+        $paths[] = $root . '/api/' . $cleanPath;
     }
 
-    if (is_file($legacyPath)) {
-        unlink($legacyPath);
+    foreach ($paths as $filePath) {
+        if (is_file($filePath)) {
+            unlink($filePath);
+        }
     }
 }
