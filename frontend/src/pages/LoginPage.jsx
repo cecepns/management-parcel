@@ -5,17 +5,33 @@ import api from '../lib/api'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const [mode, setMode] = useState('admin')
   const [form, setForm] = useState({ username: '', password: '' })
 
   const submit = async (e) => {
     e.preventDefault()
     try {
-      const { data } = await api.post('/login.php', form)
-      const token = (data?.data?.token || '').trim()
-      localStorage.setItem('token', token)
-      api.defaults.headers.common.Authorization = `Bearer ${token}`
-      toast.success('Login berhasil')
-      navigate('/')
+      if (mode === 'admin') {
+        const { data } = await api.post('/login.php', form)
+        const token = (data?.data?.token || '').trim()
+        localStorage.setItem('token', token)
+        localStorage.setItem('auth_role', 'admin')
+        localStorage.removeItem('reseller')
+        api.defaults.headers.common.Authorization = `Bearer ${token}`
+        toast.success('Login berhasil')
+        navigate('/')
+      } else {
+        const { data } = await api.post('/reseller_login.php', form)
+        const token = (data?.data?.token || '').trim()
+        localStorage.setItem('token', token)
+        localStorage.setItem('auth_role', 'reseller')
+        if (data?.data?.reseller) {
+          localStorage.setItem('reseller', JSON.stringify(data.data.reseller))
+        }
+        api.defaults.headers.common.Authorization = `Bearer ${token}`
+        toast.success('Login reseller berhasil')
+        navigate('/orders')
+      }
     } catch {
       toast.error('Login gagal')
     }
@@ -23,8 +39,24 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-700 to-slate-900 p-6">
-      <form onSubmit={submit} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-        <h1 className="mb-6 text-2xl font-bold">Login Admin</h1>
+      <form className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onSubmit={submit}>
+        <h1 className="mb-4 text-2xl font-bold">{mode === 'admin' ? 'Login Admin' : 'Login Reseller'}</h1>
+        <div className="mb-4 flex gap-2 rounded-lg bg-slate-100 p-1">
+          <button
+            type="button"
+            className={`flex-1 rounded-md py-2 text-sm font-semibold ${mode === 'admin' ? 'bg-white shadow' : 'text-slate-600'}`}
+            onClick={() => setMode('admin')}
+          >
+            Admin
+          </button>
+          <button
+            type="button"
+            className={`flex-1 rounded-md py-2 text-sm font-semibold ${mode === 'reseller' ? 'bg-white shadow' : 'text-slate-600'}`}
+            onClick={() => setMode('reseller')}
+          >
+            Reseller
+          </button>
+        </div>
         <input
           className="mb-3 w-full rounded-lg border p-3"
           placeholder="Username"

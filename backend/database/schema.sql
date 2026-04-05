@@ -14,6 +14,7 @@ CREATE TABLE products (
   name VARCHAR(150) NOT NULL,
   description TEXT NULL,
   price DECIMAL(15,2) NOT NULL DEFAULT 0,
+  payment_days_total INT NOT NULL DEFAULT 0,
   stock INT NOT NULL DEFAULT 0,
   image_path VARCHAR(255) NULL,
   created_at DATETIME NULL,
@@ -25,6 +26,8 @@ CREATE TABLE resellers (
   name VARCHAR(150) NOT NULL,
   phone VARCHAR(50) NULL,
   address TEXT NULL,
+  login_username VARCHAR(100) NULL UNIQUE,
+  password_hash VARCHAR(255) NULL,
   created_at DATETIME NULL,
   updated_at DATETIME NULL
 );
@@ -47,6 +50,7 @@ CREATE TABLE orders (
   total_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
   payment_status ENUM('lunas','belum_lunas') NOT NULL DEFAULT 'belum_lunas',
   payment_days_total INT NOT NULL DEFAULT 0,
+  payment_days_target INT NOT NULL DEFAULT 0,
   amount_paid DECIMAL(15,2) NOT NULL DEFAULT 0,
   notes TEXT NULL,
   created_at DATETIME NULL,

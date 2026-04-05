@@ -8,7 +8,7 @@ import Modal from '../components/Modal'
 import SearchInput from '../components/SearchInput'
 import useDebounce from '../hooks/useDebounce'
 
-const init = { id: null, name: '', price: '', stock: '', description: '', image: null }
+const init = { id: null, name: '', price: '', payment_days_total: '', stock: '', description: '', image: null }
 const API_ORIGIN = import.meta.env.VITE_API_ORIGIN || 'https://api.isavralabel.com'
 
 const toImageUrl = (path) => {
@@ -64,7 +64,13 @@ export default function ProductsPage() {
   const submit = async (e) => {
     e.preventDefault()
     const fd = new FormData()
-    Object.entries(form).forEach(([k, v]) => v && fd.append(k, v))
+    if (form.id) fd.append('id', String(form.id))
+    fd.append('name', form.name)
+    fd.append('price', String(form.price ?? 0))
+    fd.append('payment_days_total', String(form.payment_days_total === '' ? 0 : form.payment_days_total))
+    fd.append('stock', String(form.stock ?? 0))
+    fd.append('description', form.description ?? '')
+    if (form.image instanceof Blob) fd.append('image', form.image)
     await api.post('/products_save.php', fd)
     toast.success(form.id ? 'Produk diupdate' : 'Produk ditambah')
     setForm(init)
@@ -121,7 +127,7 @@ export default function ProductsPage() {
                 )}
                 <div>
                   <p className="font-semibold">{p.name}</p>
-                  <p className="text-sm text-slate-500">Rp {Number(p.price).toLocaleString('id-ID')} | Stok {p.stock}</p>
+                  <p className="text-sm text-slate-500">Rp {Number(p.price).toLocaleString('id-ID')} | Cicilan {Number(p.payment_days_total || 0)} hari | Stok {p.stock}</p>
                 </div>
               </div>
               <div className="flex gap-2">
@@ -140,6 +146,9 @@ export default function ProductsPage() {
           <input className="mb-2 w-full rounded-lg border border-slate-300 p-2" placeholder="Nama" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <label className="mb-1 block text-sm font-medium text-slate-700">Harga</label>
           <input className="mb-2 w-full rounded-lg border border-slate-300 p-2" placeholder="Harga" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+          <label className="mb-1 block text-sm font-medium text-slate-700">Jumlah Hari Bayar (cicilan paket)</label>
+          <input className="mb-2 w-full rounded-lg border border-slate-300 p-2" placeholder="Mis. 365" type="number" min="0" value={form.payment_days_total} onChange={(e) => setForm({ ...form, payment_days_total: e.target.value })} />
+          <p className="mb-2 text-xs text-slate-500">Digunakan untuk menghitung target hari order (qty × hari per produk).</p>
           <label className="mb-1 block text-sm font-medium text-slate-700">Stok</label>
           <input className="mb-2 w-full rounded-lg border border-slate-300 p-2" placeholder="Stock" type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} />
           <label className="mb-1 block text-sm font-medium text-slate-700">Deskripsi</label>

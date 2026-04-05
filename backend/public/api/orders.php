@@ -1,12 +1,18 @@
 <?php
 require_once __DIR__ . '/_bootstrap.php';
-auth_user_id();
+
+$actor = auth_roles(['admin', 'reseller']);
 
 $page = max(1, (int)($_GET['page'] ?? 1));
 $limit = min(10, max(1, (int)($_GET['limit'] ?? 10)));
 $offset = ($page - 1) * $limit;
 $q = trim($_GET['q'] ?? '');
-$resellerId = isset($_GET['reseller_id']) && $_GET['reseller_id'] !== '' ? (int)$_GET['reseller_id'] : null;
+
+if ($actor['role'] === 'reseller') {
+    $resellerId = (int)$actor['id'];
+} else {
+    $resellerId = isset($_GET['reseller_id']) && $_GET['reseller_id'] !== '' ? (int)$_GET['reseller_id'] : null;
+}
 
 $where = '';
 $params = [];
@@ -23,6 +29,9 @@ if ($resellerId) {
     $params[] = $resellerId;
 }
 
+$daysRemainingSql = "CASE WHEN o.payment_status = 'lunas' THEN 0
+    ELSE GREATEST(COALESCE(o.payment_days_target, 0) - COALESCE(o.payment_days_total, 0), 0) END";
+
 $countSql = "SELECT COUNT(*)
         FROM orders o
         JOIN customers c ON c.id=o.customer_id
@@ -32,20 +41,17 @@ $countStmt->execute($params);
 $total = (int)$countStmt->fetchColumn();
 
 $sql = "SELECT o.*, c.name AS customer_name, c.phone AS customer_phone, r.name AS reseller_name,
-        GREATEST(o.total_amount - o.amount_paid, 0) AS remaining_amount
+        GREATEST(o.total_amount - o.amount_paid, 0) AS remaining_amount,
+        {$daysRemainingSql} AS payment_days_remaining
         FROM orders o
         JOIN customers c ON c.id=o.customer_id
         LEFT JOIN resellers r ON r.id=o.reseller_id
-        " . $where . " ORDER BY o.id DESC LIMIT ? OFFSET ?";
+        " . $where . " ORDER BY o.id DESC LIMIT " . (int)$limit . " OFFSET " . (int)$offset;
 $stmt = $db->prepare($sql);
-foreach ($params as $index => $value) {
-    $stmt->bindValue($index + 1, $value, PDO::PARAM_STR);
-}
-$stmt->bindValue(count($params) + 1, $limit, PDO::PARAM_INT);
-$stmt->bindValue(count($params) + 2, $offset, PDO::PARAM_INT);
-$stmt->execute();
+$stmt->execute($params);
+$rows = $stmt->fetchAll();
 
-json_response($stmt->fetchAll(), 200, [
+json_response($rows, 200, [
     'page' => $page,
     'limit' => $limit,
     'total' => $total,

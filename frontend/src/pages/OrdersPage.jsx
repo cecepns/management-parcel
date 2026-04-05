@@ -16,12 +16,13 @@ const initForm = {
   payment_status: 'belum_lunas',
   payment_days_total: 0,
   amount_paid: 0,
-  items: [{ product_id: '', qty: 1 }],
+  items: [{ product_id: '', product_name: '', qty: 1 }],
 }
 
 const toNumberOrEmpty = (value) => (value === '' ? '' : Number(value))
 
 export default function OrdersPage() {
+  const isReseller = localStorage.getItem('auth_role') === 'reseller'
   const [orders, setOrders] = useState([])
   const [products, setProducts] = useState([])
   const [productSearch, setProductSearch] = useState('')
@@ -43,18 +44,19 @@ export default function OrdersPage() {
       page: String(page),
       limit: '10',
       q: debouncedSearch,
-      reseller_id: filterResellerId,
-    }).toString()
-    return api.get(`/orders.php?${query}`).then((r) => {
+    })
+    if (!isReseller && filterResellerId) query.set('reseller_id', filterResellerId)
+    return api.get(`/orders.php?${query.toString()}`).then((r) => {
       setOrders(r.data.data)
       setMeta(r.data.meta)
     })
-  }, [page, debouncedSearch, filterResellerId])
+  }, [page, debouncedSearch, filterResellerId, isReseller])
   useEffect(() => { load() }, [load])
-  useEffect(() => { setPage(1) }, [debouncedSearch])
+  useEffect(() => { setPage(1) }, [debouncedSearch, filterResellerId])
   useEffect(() => {
+    if (isReseller) return
     api.get('/resellers.php?page=1&limit=100').then((r) => setResellers(r.data.data))
-  }, [])
+  }, [isReseller])
   useEffect(() => {
     const query = new URLSearchParams({
       page: '1',
@@ -71,7 +73,7 @@ export default function OrdersPage() {
       payment_days_total: Number(form.payment_days_total || 0),
       amount_paid: Number(form.amount_paid || 0),
       items: form.items.map((item) => ({
-        ...item,
+        product_id: item.product_id,
         qty: Math.max(1, Number(item.qty || 1)),
       })),
     }
@@ -132,17 +134,19 @@ export default function OrdersPage() {
   return (
     <div className="card">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold text-slate-800">Manajemen Order</h2>
-        <div className="w-64">
-          <Select
-            isClearable
-            isSearchable
-            placeholder="Filter reseller..."
-            options={resellerOptions}
-            value={resellerOptions.find((opt) => opt.value === String(filterResellerId)) || null}
-            onChange={(selected) => setFilterResellerId(selected?.value || '')}
-          />
-        </div>
+        <h2 className="text-xl font-semibold text-slate-800">{isReseller ? 'Order Pelanggan Saya' : 'Manajemen Order'}</h2>
+        {!isReseller && (
+          <div className="w-64">
+            <Select
+              isClearable
+              isSearchable
+              placeholder="Filter reseller..."
+              options={resellerOptions}
+              value={resellerOptions.find((opt) => opt.value === String(filterResellerId)) || null}
+              onChange={(selected) => setFilterResellerId(selected?.value || '')}
+            />
+          </div>
+        )}
         <SearchInput value={search} onChange={setSearch} placeholder="Cari customer/reseller/tanggal order..." />
         <button
           onClick={openAdd}
@@ -154,15 +158,16 @@ export default function OrdersPage() {
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Daftar Order</h3>
         <div className="overflow-x-auto rounded-lg border border-slate-200">
-          <table className="min-w-[980px] w-full text-sm">
+          <table className="min-w-[1100px] w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-3 py-3">No</th>
                 <th className="px-3 py-3">Pelanggan</th>
-                <th className="px-3 py-3">Reseller</th>
+                {!isReseller && <th className="px-3 py-3">Reseller</th>}
                 <th className="px-3 py-3">Tanggal</th>
                 <th className="px-3 py-3">Total</th>
                 <th className="px-3 py-3">Progress Bayar</th>
+                <th className="px-3 py-3">Cicilan (hari)</th>
                 <th className="px-3 py-3">Status</th>
                 <th className="px-3 py-3 text-right">Aksi</th>
               </tr>
@@ -172,13 +177,18 @@ export default function OrdersPage() {
                 <tr key={o.id} className="border-t border-slate-200">
                   <td className="px-3 py-3 font-semibold text-slate-500">{(page - 1) * 10 + idx + 1}</td>
                   <td className="px-3 py-3 font-semibold text-slate-800">{o.customer_name}</td>
-                  <td className="px-3 py-3 text-slate-600">{o.reseller_name || '-'}</td>
+                  {!isReseller && <td className="px-3 py-3 text-slate-600">{o.reseller_name || '-'}</td>}
                   <td className="px-3 py-3 text-slate-600">{o.order_date}</td>
                   <td className="px-3 py-3 font-semibold text-slate-800">Rp {Number(o.total_amount).toLocaleString('id-ID')}</td>
                   <td className="px-3 py-3 text-slate-600">
                     {o.payment_status === 'belum_lunas'
-                      ? `Dibayar Rp ${Number(o.amount_paid || 0).toLocaleString('id-ID')} | Hari ${o.payment_days_total || 0} | Sisa Rp ${Number(o.remaining_amount || 0).toLocaleString('id-ID')}`
+                      ? `Dibayar Rp ${Number(o.amount_paid || 0).toLocaleString('id-ID')} | Sisa Rp ${Number(o.remaining_amount || 0).toLocaleString('id-ID')}`
                       : 'Lunas'}
+                  </td>
+                  <td className="px-3 py-3 text-slate-600">
+                    {o.payment_status === 'belum_lunas'
+                      ? `Target ${Number(o.payment_days_target || 0)} | Pakai ${Number(o.payment_days_total || 0)} | Sisa ${Number(o.payment_days_remaining ?? 0)}`
+                      : '-'}
                   </td>
                   <td className="px-3 py-3">
                     <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${o.payment_status === 'lunas' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
@@ -187,16 +197,18 @@ export default function OrdersPage() {
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex justify-end gap-2">
-                      <button className="rounded-lg bg-sky-600 p-2 text-white" onClick={() => openView(o.id)}><Eye size={16} /></button>
-                      <button className="rounded-lg bg-amber-500 p-2 text-white" onClick={() => openEdit(o.id)}><Pencil size={16} /></button>
-                      <button className="rounded-lg bg-rose-600 p-2 text-white" onClick={() => remove(o.id)}><Trash2 size={16} /></button>
+                      <button type="button" className="rounded-lg bg-sky-600 p-2 text-white" onClick={() => openView(o.id)}><Eye size={16} /></button>
+                      <button type="button" className="rounded-lg bg-amber-500 p-2 text-white" onClick={() => openEdit(o.id)}><Pencil size={16} /></button>
+                      {!isReseller && (
+                        <button type="button" className="rounded-lg bg-rose-600 p-2 text-white" onClick={() => remove(o.id)}><Trash2 size={16} /></button>
+                      )}
                     </div>
                   </td>
                 </tr>
               ))}
               {orders.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-slate-500">Data order tidak ditemukan.</td>
+                  <td colSpan={isReseller ? 8 : 9} className="px-3 py-8 text-center text-slate-500">Data order tidak ditemukan.</td>
                 </tr>
               )}
             </tbody>
@@ -211,19 +223,21 @@ export default function OrdersPage() {
           <input className="mb-2 w-full rounded-lg border border-slate-300 p-2" placeholder="Nama Pelanggan" value={form.customer_name} onChange={(e) => setForm({ ...form, customer_name: e.target.value })} />
           <label className="mb-1 block text-sm font-medium text-slate-700">No HP Pelanggan</label>
           <input className="mb-2 w-full rounded-lg border border-slate-300 p-2" placeholder="No HP Pelanggan" value={form.customer_phone} onChange={(e) => setForm({ ...form, customer_phone: e.target.value })} />
-          <div className="mb-2">
-            <label className="mb-1 block text-sm font-medium text-slate-700">Reseller</label>
-            <Select
-              isClearable
-              isSearchable
-              placeholder="Pilih reseller (opsional)"
-              options={resellerOptions}
-              value={resellerOptions.find((opt) => opt.value === String(form.reseller_id)) || null}
-              onChange={(selected) => setForm({ ...form, reseller_id: selected?.value || '' })}
-              classNamePrefix="react-select"
-            />
-            <p className="mt-1 text-xs text-slate-500">Kosongkan untuk pelanggan langsung (tanpa reseller)</p>
-          </div>
+          {!isReseller && (
+            <div className="mb-2">
+              <label className="mb-1 block text-sm font-medium text-slate-700">Reseller</label>
+              <Select
+                isClearable
+                isSearchable
+                placeholder="Pilih reseller (opsional)"
+                options={resellerOptions}
+                value={resellerOptions.find((opt) => opt.value === String(form.reseller_id)) || null}
+                onChange={(selected) => setForm({ ...form, reseller_id: selected?.value || '' })}
+                classNamePrefix="react-select"
+              />
+              <p className="mt-1 text-xs text-slate-500">Kosongkan untuk pelanggan langsung (tanpa reseller)</p>
+            </div>
+          )}
           <label className="mb-1 block text-sm font-medium text-slate-700">Status Pembayaran</label>
           <select className="mb-2 w-full rounded-lg border border-slate-300 p-2" value={form.payment_status} onChange={(e) => setForm({ ...form, payment_status: e.target.value })}>
             <option value="belum_lunas">Belum Lunas</option>
@@ -284,7 +298,7 @@ export default function OrdersPage() {
           <button
             type="button"
             className="mb-4 inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700"
-            onClick={() => setForm({ ...form, items: [...form.items, { product_id: '', qty: 1 }] })}
+            onClick={() => setForm({ ...form, items: [...form.items, { product_id: '', product_name: '', qty: 1 }] })}
           >
             <PackagePlus size={16} /> Tambah Produk
           </button>
@@ -306,7 +320,9 @@ export default function OrdersPage() {
             {detailOrder.payment_status === 'belum_lunas' && (
               <div className="mt-2 rounded-lg bg-amber-50 p-3 text-sm">
                 <p>Total Harga Barang: Rp {Number(detailOrder.total_amount).toLocaleString('id-ID')}</p>
-                <p>Jumlah Hari Bayar: {detailOrder.payment_days_total || 0} hari</p>
+                <p>Target hari cicilan (dari produk): {Number(detailOrder.payment_days_target || 0)} hari</p>
+                <p>Hari terpakai: {detailOrder.payment_days_total || 0} hari</p>
+                <p>Sisa hari: {Number(detailOrder.payment_days_remaining ?? 0)} hari</p>
                 <p>Jumlah Baru Dibayarkan: Rp {Number(detailOrder.amount_paid || 0).toLocaleString('id-ID')}</p>
                 <p className="font-semibold">Total Belum Dibayar: Rp {Number(detailOrder.remaining_amount || 0).toLocaleString('id-ID')}</p>
               </div>
@@ -315,7 +331,7 @@ export default function OrdersPage() {
               {detailOrder.items?.map((item, idx) => (
                 <div key={item.id || idx} className="rounded-lg border border-slate-200 p-3">
                   <p className="font-semibold">{idx + 1}. {item.product_name}</p>
-                  <p className="text-sm text-slate-500">Qty {item.qty} x Rp {Number(item.price).toLocaleString('id-ID')}</p>
+                  <p className="text-sm text-slate-500">Qty {item.qty} x Rp {Number(item.price).toLocaleString('id-ID')}{Number(item.product_payment_days_total) > 0 ? ` • ${Number(item.product_payment_days_total)} hari/pcs` : ''}</p>
                   <p className="text-sm font-semibold">Subtotal Rp {Number(item.subtotal).toLocaleString('id-ID')}</p>
                 </div>
               ))}

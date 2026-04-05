@@ -7,7 +7,7 @@ import Modal from '../components/Modal'
 import SearchInput from '../components/SearchInput'
 import useDebounce from '../hooks/useDebounce'
 
-const init = { id: null, name: '', phone: '', address: '' }
+const init = { id: null, name: '', phone: '', address: '', login_username: '', password: '' }
 
 export default function ResellersPage() {
   const [form, setForm] = useState(init)
@@ -44,7 +44,7 @@ export default function ResellersPage() {
     setOpen(true)
   }
   const openEdit = (reseller) => {
-    setForm(reseller)
+    setForm({ ...init, ...reseller, password: '' })
     setOpen(true)
   }
   const remove = (id) => {
@@ -181,7 +181,12 @@ export default function ResellersPage() {
           <label className="mb-1 block text-sm font-medium text-slate-700">Nomor Telepon</label>
           <input className="mb-2 w-full rounded-lg border border-slate-300 p-2" placeholder="Telepon" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
           <label className="mb-1 block text-sm font-medium text-slate-700">Alamat</label>
-          <textarea className="mb-4 w-full rounded-lg border border-slate-300 p-2" placeholder="Alamat" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+          <textarea className="mb-2 w-full rounded-lg border border-slate-300 p-2" placeholder="Alamat" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+          <label className="mb-1 block text-sm font-medium text-slate-700">Username login reseller</label>
+          <input className="mb-2 w-full rounded-lg border border-slate-300 p-2" placeholder="Username untuk login mandiri" value={form.login_username || ''} onChange={(e) => setForm({ ...form, login_username: e.target.value })} />
+          <label className="mb-1 block text-sm font-medium text-slate-700">Password login</label>
+          <input type="password" className="mb-2 w-full rounded-lg border border-slate-300 p-2" placeholder={form.id ? 'Kosongkan jika tidak diubah' : 'Password awal'} value={form.password || ''} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+          <p className="mb-4 text-xs text-slate-500">Reseller dengan username & password bisa login di tab &quot;Reseller&quot; pada halaman login.</p>
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-slate-700">Batal</button>
             <button className="rounded-lg bg-brand-600 px-4 py-2 font-semibold text-white">Simpan</button>

@@ -1,13 +1,19 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import PropTypes from 'prop-types'
 import { LogOut, Menu, X } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import api from '../lib/api'
 
-const menus = [
+const adminMenus = [
   ['/', 'Dashboard'],
   ['/products', 'Produk'],
   ['/resellers', 'Reseller'],
   ['/orders', 'Order'],
+  ['/reports', 'Laporan'],
+]
+
+const resellerMenus = [
+  ['/orders', 'Order saya'],
   ['/reports', 'Laporan'],
 ]
 
@@ -16,8 +22,15 @@ export default function Layout({ children }) {
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
+  const role = typeof window !== 'undefined' ? localStorage.getItem('auth_role') : 'admin'
+  const menus = useMemo(() => (role === 'reseller' ? resellerMenus : adminMenus), [role])
+  const brandTitle = role === 'reseller' ? 'Reseller' : 'Ramadhan Admin'
+
   const logout = () => {
     localStorage.removeItem('token')
+    localStorage.removeItem('auth_role')
+    localStorage.removeItem('reseller')
+    delete api.defaults.headers.common.Authorization
     navigate('/login')
   }
 
@@ -40,8 +53,8 @@ export default function Layout({ children }) {
         }`}
       >
         <div className="mb-6 flex items-center justify-between">
-          <Link to="/" className="block text-xl font-semibold" onClick={onNavigate}>
-            Ramadhan Admin
+          <Link to={role === 'reseller' ? '/orders' : '/'} className="block text-xl font-semibold" onClick={onNavigate}>
+            {brandTitle}
           </Link>
           <button className="rounded p-1 hover:bg-slate-800 lg:hidden" onClick={() => setSidebarOpen(false)}>
             <X size={18} />

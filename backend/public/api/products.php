@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/_bootstrap.php';
-auth_user_id();
+
+auth_roles(['admin', 'reseller']);
 
 $page = max(1, (int)($_GET['page'] ?? 1));
 $limit = min(100, max(1, (int)($_GET['limit'] ?? 10)));
@@ -20,15 +21,12 @@ $countStmt = $db->prepare('SELECT COUNT(*) FROM products' . $where);
 $countStmt->execute($params);
 $total = (int)$countStmt->fetchColumn();
 
-$stmt = $db->prepare('SELECT * FROM products' . $where . ' ORDER BY id DESC LIMIT ? OFFSET ?');
-foreach ($params as $index => $value) {
-    $stmt->bindValue($index + 1, $value, PDO::PARAM_STR);
-}
-$stmt->bindValue(count($params) + 1, $limit, PDO::PARAM_INT);
-$stmt->bindValue(count($params) + 2, $offset, PDO::PARAM_INT);
-$stmt->execute();
+$sql = 'SELECT * FROM products' . $where . ' ORDER BY id DESC LIMIT ' . (int)$limit . ' OFFSET ' . (int)$offset;
+$stmt = $db->prepare($sql);
+$stmt->execute($params);
+$rows = $stmt->fetchAll();
 
-json_response($stmt->fetchAll(), 200, [
+json_response($rows, 200, [
     'page' => $page,
     'limit' => $limit,
     'total' => $total,

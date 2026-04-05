@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/_bootstrap.php';
-auth_user_id();
+
+$actor = auth_roles(['admin', 'reseller']);
 
 $body = request_body();
 $orderId = (int)($body['order_id'] ?? 0);
@@ -19,6 +20,10 @@ if (!$order) {
 }
 if ((int)$order['reseller_id'] <= 0) {
     json_response(['message' => 'Order ini bukan order reseller'], 422);
+}
+
+if ($actor['role'] === 'reseller' && (int)$order['reseller_id'] !== (int)$actor['id']) {
+    json_response(['message' => 'Forbidden'], 403);
 }
 
 $totalAmount = (float)$order['total_amount'];

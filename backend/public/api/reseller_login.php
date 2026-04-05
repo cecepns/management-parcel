@@ -10,20 +10,20 @@ try {
         json_response(['message' => 'Username dan password wajib diisi'], 422);
     }
 
-    $stmt = $db->prepare('SELECT id, username FROM users WHERE username = ? AND password = ? LIMIT 1');
-    $stmt->execute([$username, md5($password)]);
-    $user = $stmt->fetch();
+    $stmt = $db->prepare('SELECT id, name, password_hash FROM resellers WHERE login_username = ? LIMIT 1');
+    $stmt->execute([$username]);
+    $row = $stmt->fetch();
 
-    if (!$user) {
+    if (!$row || empty($row['password_hash']) || !password_verify($password, $row['password_hash'])) {
         json_response(['message' => 'Login gagal'], 401);
     }
 
     json_response([
-        'token' => make_token((int)$user['id']),
-        'role' => 'admin',
-        'user' => $user,
+        'token' => make_reseller_token((int)$row['id']),
+        'role' => 'reseller',
+        'reseller' => ['id' => (int)$row['id'], 'name' => $row['name']],
     ]);
 } catch (Throwable $e) {
-    error_log('LOGIN ERROR: ' . $e->getMessage());
+    error_log('RESELLER_LOGIN ERROR: ' . $e->getMessage());
     json_response(['message' => 'Terjadi kesalahan pada server'], 500);
 }
