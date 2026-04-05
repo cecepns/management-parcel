@@ -42,6 +42,21 @@ try {
     $countStmt->execute($params);
     $total = (int)$countStmt->fetchColumn();
 
+    $summarySql = "SELECT
+            COUNT(*) AS order_count,
+            COALESCE(SUM(o.total_amount), 0) AS sum_total_amount,
+            COALESCE(SUM(o.amount_paid), 0) AS sum_amount_paid,
+            COALESCE(SUM(GREATEST(o.total_amount - o.amount_paid, 0)), 0) AS sum_remaining_amount,
+            SUM(CASE WHEN o.payment_status = 'belum_lunas' THEN 1 ELSE 0 END) AS count_belum_lunas,
+            SUM(CASE WHEN o.payment_status = 'lunas' THEN 1 ELSE 0 END) AS count_lunas
+        FROM orders o
+        JOIN customers c ON c.id = o.customer_id
+        LEFT JOIN resellers r ON r.id = o.reseller_id
+        " . $whereSql;
+    $summaryStmt = $db->prepare($summarySql);
+    $summaryStmt->execute($params);
+    $summary = $summaryStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
     $daysRemainingSql = "CASE WHEN o.payment_status = 'lunas' THEN 0
         ELSE GREATEST(COALESCE(o.payment_days_target, 0) - COALESCE(o.payment_days_total, 0), 0) END";
 
@@ -49,7 +64,9 @@ try {
                o.payment_status,
                GREATEST(o.total_amount - o.amount_paid, 0) AS remaining_amount,
                {$daysRemainingSql} AS payment_days_remaining,
-               c.name AS customer_name, r.name AS reseller_name
+               c.name AS customer_name,
+               c.phone AS customer_phone,
+               r.name AS reseller_name
         FROM orders o
         JOIN customers c ON c.id = o.customer_id
         LEFT JOIN resellers r ON r.id = o.reseller_id
@@ -67,6 +84,14 @@ try {
         'total' => $total,
         'total_pages' => (int)ceil($total / $limit),
         'year' => $year,
+        'summary' => [
+            'order_count' => (int)($summary['order_count'] ?? 0),
+            'sum_total_amount' => (float)($summary['sum_total_amount'] ?? 0),
+            'sum_amount_paid' => (float)($summary['sum_amount_paid'] ?? 0),
+            'sum_remaining_amount' => (float)($summary['sum_remaining_amount'] ?? 0),
+            'count_belum_lunas' => (int)($summary['count_belum_lunas'] ?? 0),
+            'count_lunas' => (int)($summary['count_lunas'] ?? 0),
+        ],
     ]);
 } catch (Throwable $e) {
     error_log('REPORTS ERROR: ' . $e->getMessage());

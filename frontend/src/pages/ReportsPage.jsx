@@ -11,6 +11,15 @@ import Pagination from '../components/Pagination'
 import SearchInput from '../components/SearchInput'
 import useDebounce from '../hooks/useDebounce'
 
+const emptySummary = {
+  order_count: 0,
+  sum_total_amount: 0,
+  sum_amount_paid: 0,
+  sum_remaining_amount: 0,
+  count_belum_lunas: 0,
+  count_lunas: 0,
+}
+
 export default function ReportsPage() {
   const isReseller = localStorage.getItem('auth_role') === 'reseller'
   const [yearDate, setYearDate] = useState(new Date())
@@ -21,6 +30,7 @@ export default function ReportsPage() {
   const debouncedCustomerQ = useDebounce(customerQ, 500)
   const [page, setPage] = useState(1)
   const [meta, setMeta] = useState({ total_pages: 1, total: 0 })
+  const [summary, setSummary] = useState(emptySummary)
 
   useEffect(() => {
     if (isReseller) return
@@ -44,6 +54,7 @@ export default function ReportsPage() {
     const { data } = await api.get(`/reports.php?${params.toString()}`)
     setRows(data.data || [])
     setMeta(data.meta || { total_pages: 1, total: 0 })
+    setSummary({ ...emptySummary, ...(data.meta?.summary || {}) })
   }, [resellerId, yearDate, debouncedCustomerQ, isReseller])
 
   useEffect(() => {
@@ -75,22 +86,29 @@ export default function ReportsPage() {
     return all
   }
 
+  const exportHeaders = [
+    'No', 'Tanggal', 'Pelanggan', 'No HP', 'Reseller', 'Total order', 'Dibayar', 'Sisa bayar',
+    'Target hari', 'Hari terpakai', 'Sisa hari', 'Status',
+  ]
+
   const exportCsv = async () => {
     const allRows = await fetchAllRows()
     if (!allRows.length) return toast.error('Data laporan kosong')
-    const header = ['No', 'Tanggal', 'Customer', 'Reseller', 'Total', 'Target hari', 'Hari terpakai', 'Sisa hari', 'Status']
     const body = allRows.map((r, idx) => [
       idx + 1,
       r.order_date,
       r.customer_name,
+      r.customer_phone || '-',
       r.reseller_name || '-',
       Number(r.total_amount),
+      Number(r.amount_paid || 0),
+      r.payment_status === 'lunas' ? 0 : Number(r.remaining_amount || 0),
       Number(r.payment_days_target || 0),
       Number(r.payment_days_total || 0),
       Number(r.payment_days_remaining ?? 0),
       r.payment_status === 'lunas' ? 'Lunas' : 'Belum Lunas',
     ])
-    const csvRows = [header, ...body].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    const csvRows = [exportHeaders, ...body].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
     const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
@@ -109,19 +127,23 @@ export default function ReportsPage() {
     doc.text(`Tahun: ${yearDate.getFullYear()}`, 14, 20)
     autoTable(doc, {
       startY: 24,
-      head: [['No', 'Tanggal', 'Customer', 'Reseller', 'Total', 'Target hari', 'Hari pakai', 'Sisa hari', 'Status']],
+      head: [exportHeaders],
       body: allRows.map((r, idx) => [
         idx + 1,
         r.order_date,
         r.customer_name,
+        r.customer_phone || '-',
         r.reseller_name || '-',
         `Rp ${Number(r.total_amount).toLocaleString('id-ID')}`,
+        `Rp ${Number(r.amount_paid || 0).toLocaleString('id-ID')}`,
+        r.payment_status === 'lunas' ? '—' : `Rp ${Number(r.remaining_amount || 0).toLocaleString('id-ID')}`,
         String(r.payment_days_target ?? 0),
         String(r.payment_days_total ?? 0),
         String(r.payment_days_remaining ?? 0),
         r.payment_status === 'lunas' ? 'Lunas' : 'Belum Lunas',
       ]),
-      styles: { fontSize: 8 },
+      styles: { fontSize: 7 },
+      headStyles: { fontSize: 7 },
     })
     doc.save(`laporan-order-${yearDate.getFullYear()}.pdf`)
   }
@@ -154,27 +176,88 @@ export default function ReportsPage() {
           </div>
         )}
         <div className="w-full min-w-[200px] max-w-sm">
-          <p className="mb-1 text-sm">Cari nama pelanggan</p>
+          <p className="mb-1 text-sm font-medium text-slate-700">Cari nama pelanggan</p>
           <SearchInput value={customerQ} onChange={setCustomerQ} placeholder="Ketik nama pelanggan..." />
         </div>
         <button className="rounded bg-brand-600 px-4 py-2 text-white" onClick={() => { setPage(1); getReport(1) }} type="button">Filter</button>
-        <button className="inline-flex items-center gap-2 rounded bg-emerald-600 px-4 py-2 text-white" onClick={exportCsv}><Download size={16} /> CSV</button>
-        <button className="inline-flex items-center gap-2 rounded bg-rose-600 px-4 py-2 text-white" onClick={exportPdf}><FileText size={16} /> PDF</button>
+        <button className="inline-flex items-center gap-2 rounded bg-emerald-600 px-4 py-2 text-white" type="button" onClick={exportCsv}><Download size={16} /> CSV</button>
+        <button className="inline-flex items-center gap-2 rounded bg-rose-600 px-4 py-2 text-white" type="button" onClick={exportPdf}><FileText size={16} /> PDF</button>
       </div>
-      <div className="space-y-2">
+
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Jumlah order</p>
+          <p className="mt-1 text-2xl font-bold text-slate-800">{summary.order_count}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total nilai order</p>
+          <p className="mt-1 text-lg font-bold text-slate-800">Rp {Number(summary.sum_total_amount).toLocaleString('id-ID')}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total sudah dibayar</p>
+          <p className="mt-1 text-lg font-bold text-emerald-700">Rp {Number(summary.sum_amount_paid).toLocaleString('id-ID')}</p>
+        </div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Total sisa bayar</p>
+          <p className="mt-1 text-lg font-bold text-amber-900">Rp {Number(summary.sum_remaining_amount).toLocaleString('id-ID')}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Belum lunas</p>
+          <p className="mt-1 text-2xl font-bold text-amber-700">{summary.count_belum_lunas}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Lunas</p>
+          <p className="mt-1 text-2xl font-bold text-emerald-700">{summary.count_lunas}</p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
         {rows.map((r, idx) => (
-          <div key={r.id} className="rounded border p-3">
-            <p className="font-semibold">{(page - 1) * 500 + idx + 1}. {r.customer_name}</p>
-            <p className="text-sm text-slate-500">{r.order_date}{r.reseller_name ? ` • ${r.reseller_name}` : ''}</p>
-            <p className="text-sm">Total Rp {Number(r.total_amount).toLocaleString('id-ID')}</p>
-            {r.payment_status !== 'lunas' && (
-              <p className="text-sm text-slate-600">
-                Cicilan: target {Number(r.payment_days_target || 0)} hari • terpakai {Number(r.payment_days_total || 0)} hari • sisa {Number(r.payment_days_remaining ?? 0)} hari
-              </p>
-            )}
-            <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-xs font-semibold ${r.payment_status === 'lunas' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-              {r.payment_status === 'lunas' ? 'Lunas' : 'Belum Lunas'}
-            </span>
+          <div key={r.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <p className="text-lg font-semibold text-slate-800">
+                  {(page - 1) * 500 + idx + 1}. {r.customer_name}
+                </p>
+                <p className="text-sm text-slate-500">HP: {r.customer_phone || '-'} • Tanggal order: {r.order_date}</p>
+                {!isReseller && r.reseller_name && (
+                  <p className="text-sm text-slate-600">Reseller: {r.reseller_name}</p>
+                )}
+              </div>
+              <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${r.payment_status === 'lunas' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                {r.payment_status === 'lunas' ? 'Lunas' : 'Belum Lunas'}
+              </span>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <p className="text-xs font-semibold uppercase text-slate-500">Total order</p>
+                <p className="font-semibold text-slate-800">Rp {Number(r.total_amount).toLocaleString('id-ID')}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-slate-500">Sudah dibayar</p>
+                <p className="font-semibold text-emerald-700">Rp {Number(r.amount_paid || 0).toLocaleString('id-ID')}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-slate-500">Sisa bayar</p>
+                <p className="font-semibold text-amber-800">
+                  {r.payment_status === 'belum_lunas' ? `Rp ${Number(r.remaining_amount || 0).toLocaleString('id-ID')}` : '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-slate-500">Cicilan (hari)</p>
+                {r.payment_status === 'belum_lunas' ? (
+                  <p className="text-sm text-slate-700">
+                    Target <span className="font-semibold">{Number(r.payment_days_target || 0)}</span>
+                    {' · '}
+                    Terpakai <span className="font-semibold">{Number(r.payment_days_total || 0)}</span>
+                    {' · '}
+                    Sisa <span className="font-semibold text-amber-800">{Number(r.payment_days_remaining ?? 0)}</span>
+                  </p>
+                ) : (
+                  <p className="text-slate-400">—</p>
+                )}
+              </div>
+            </div>
           </div>
         ))}
       </div>
