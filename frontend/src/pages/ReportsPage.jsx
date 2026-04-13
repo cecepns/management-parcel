@@ -31,6 +31,7 @@ export default function ReportsPage() {
   const [page, setPage] = useState(1)
   const [meta, setMeta] = useState({ total_pages: 1, total: 0 })
   const [summary, setSummary] = useState(emptySummary)
+  const [byProduct, setByProduct] = useState([])
 
   useEffect(() => {
     if (isReseller) return
@@ -57,6 +58,17 @@ export default function ReportsPage() {
     setSummary({ ...emptySummary, ...(data.meta?.summary || {}) })
   }, [resellerId, yearDate, debouncedCustomerQ, isReseller])
 
+  const loadByProduct = useCallback(async () => {
+    const selectedYear = yearDate.getFullYear()
+    const params = new URLSearchParams({
+      year: String(selectedYear),
+      q: debouncedCustomerQ,
+    })
+    if (!isReseller && resellerId) params.set('reseller_id', resellerId)
+    const { data } = await api.get(`/reports_by_product.php?${params.toString()}`)
+    setByProduct(Array.isArray(data.data) ? data.data : [])
+  }, [resellerId, yearDate, debouncedCustomerQ, isReseller])
+
   useEffect(() => {
     setPage(1)
   }, [debouncedCustomerQ, resellerId, yearDate, isReseller])
@@ -64,6 +76,10 @@ export default function ReportsPage() {
   useEffect(() => {
     getReport(page)
   }, [page, getReport])
+
+  useEffect(() => {
+    loadByProduct()
+  }, [loadByProduct])
 
   const fetchAllRows = async () => {
     const selectedYear = yearDate.getFullYear()
@@ -179,7 +195,17 @@ export default function ReportsPage() {
           <p className="mb-1 text-sm font-medium text-slate-700">Cari nama pelanggan</p>
           <SearchInput value={customerQ} onChange={setCustomerQ} placeholder="Ketik nama pelanggan..." />
         </div>
-        <button className="rounded bg-brand-600 px-4 py-2 text-white" onClick={() => { setPage(1); getReport(1) }} type="button">Filter</button>
+        <button
+          className="rounded bg-brand-600 px-4 py-2 text-white"
+          onClick={() => {
+            setPage(1)
+            getReport(1)
+            loadByProduct()
+          }}
+          type="button"
+        >
+          Filter
+        </button>
         <button className="inline-flex items-center gap-2 rounded bg-emerald-600 px-4 py-2 text-white" type="button" onClick={exportCsv}><Download size={16} /> CSV</button>
         <button className="inline-flex items-center gap-2 rounded bg-rose-600 px-4 py-2 text-white" type="button" onClick={exportPdf}><FileText size={16} /> PDF</button>
       </div>
@@ -209,6 +235,51 @@ export default function ReportsPage() {
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Lunas</p>
           <p className="mt-1 text-2xl font-bold text-emerald-700">{summary.count_lunas}</p>
         </div>
+      </div>
+
+      <div className="mb-8 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-800">Order per paket</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Ringkasan siapa saja yang memesan tiap produk beserta jumlahnya, agar mudah menyiapkan pembelian stok paket.
+        </p>
+        {byProduct.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500">Tidak ada baris order di rentang filter ini.</p>
+        ) : (
+          <div className="mt-4 space-y-4">
+            {byProduct.map((block) => (
+              <div key={block.product_id} className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+                <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                  <h3 className="font-semibold text-slate-800">{block.product_name}</h3>
+                  <p className="text-sm font-medium text-brand-700">Total qty dipesan: {block.total_qty}</p>
+                </div>
+                <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
+                  <table className="min-w-[640px] w-full text-sm">
+                    <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2">Pelanggan</th>
+                        <th className="px-3 py-2">No HP</th>
+                        {!isReseller && <th className="px-3 py-2">Reseller</th>}
+                        <th className="px-3 py-2">Tanggal</th>
+                        <th className="px-3 py-2 text-right">Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {block.lines.map((line, lineIdx) => (
+                        <tr key={`${block.product_id}-${line.order_id}-${lineIdx}`} className="border-t border-slate-100">
+                          <td className="px-3 py-2 font-medium text-slate-800">{line.customer_name}</td>
+                          <td className="px-3 py-2 text-slate-600">{line.customer_phone || '—'}</td>
+                          {!isReseller && <td className="px-3 py-2 text-slate-600">{line.reseller_name || '—'}</td>}
+                          <td className="px-3 py-2 whitespace-nowrap text-slate-600">{line.order_date}</td>
+                          <td className="px-3 py-2 text-right font-semibold text-slate-800">{line.qty}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="space-y-3">

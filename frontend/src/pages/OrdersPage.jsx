@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Plus, PackagePlus, Pencil, Trash2, Eye } from 'lucide-react'
 import Select from 'react-select'
@@ -16,10 +16,38 @@ const initForm = {
   payment_status: 'belum_lunas',
   payment_days_total: 0,
   amount_paid: 0,
-  items: [{ product_id: '', product_name: '', qty: 1 }],
+  items: [{ product_id: '', product_name: '', qty: 1, unit_price: null, product_payment_days_total: null }],
 }
 
 const toNumberOrEmpty = (value) => (value === '' ? '' : Number(value))
+
+/** Subtotal & target hari dari baris order (pakai data produk terbaru atau snapshot dari server). */
+function getPaymentMetrics(items, products) {
+  let subtotal = 0
+  let targetDays = 0
+  for (const it of items) {
+    if (!it.product_id) continue
+    const qty = Math.max(1, Number(it.qty) || 1)
+    const p = products.find((pr) => String(pr.id) === String(it.product_id))
+    const unit = p ? Number(p.price) : it.unit_price != null ? Number(it.unit_price) : 0
+    const prodDays = p ? Number(p.payment_days_total || 0) : Number(it.product_payment_days_total || 0)
+    subtotal += unit * qty
+    targetDays += qty * prodDays
+  }
+  const perDay = targetDays > 0 ? subtotal / targetDays : 0
+  return { subtotal, targetDays, perDay }
+}
+
+function calcAmountFromDays(daysVal, metrics) {
+  const d = daysVal === '' || daysVal === null || daysVal === undefined ? 0 : Number(daysVal)
+  if (!Number.isFinite(d) || d <= 0 || metrics.targetDays <= 0 || metrics.subtotal <= 0) return 0
+  const raw = d * (metrics.subtotal / metrics.targetDays)
+  return Math.min(Math.round(raw), Math.round(metrics.subtotal))
+}
+
+function shouldAutoFillAmount(paymentStatus, daysVal) {
+  return paymentStatus === 'belum_lunas' && daysVal !== '' && Number(daysVal) > 0
+}
 
 export default function OrdersPage() {
   const isReseller = localStorage.getItem('auth_role') === 'reseller'
@@ -38,6 +66,8 @@ export default function OrdersPage() {
   const [filterResellerId, setFilterResellerId] = useState('')
   const debouncedCustomerName = useDebounce(customerNameSearch, 500)
   const debouncedProductSearch = useDebounce(productSearch, 500)
+
+  const paymentMetrics = useMemo(() => getPaymentMetrics(form.items, products), [form.items, products])
 
   const load = useCallback(() => {
     const query = new URLSearchParams({
@@ -100,7 +130,13 @@ export default function OrdersPage() {
       payment_status: d.payment_status || 'belum_lunas',
       payment_days_total: Number(d.payment_days_total || 0),
       amount_paid: Number(d.amount_paid || 0),
-      items: (d.items || []).map((it) => ({ product_id: String(it.product_id), product_name: it.product_name || '', qty: Number(it.qty) })),
+      items: (d.items || []).map((it) => ({
+        product_id: String(it.product_id),
+        product_name: it.product_name || '',
+        qty: Number(it.qty),
+        unit_price: Number(it.price),
+        product_payment_days_total: Number(it.product_payment_days_total || 0),
+      })),
     })
     setMode('edit')
     setOpenForm(true)
@@ -257,7 +293,21 @@ export default function OrdersPage() {
             </div>
           )}
           <label className="mb-1 block text-sm font-medium text-slate-700">Status Pembayaran</label>
-          <select className="mb-2 w-full rounded-lg border border-slate-300 p-2" value={form.payment_status} onChange={(e) => setForm({ ...form, payment_status: e.target.value })}>
+          <select
+            className="mb-2 w-full rounded-lg border border-slate-300 p-2"
+            value={form.payment_status}
+            onChange={(e) => {
+              const ps = e.target.value
+              if (ps === 'belum_lunas') {
+                const sync = shouldAutoFillAmount(ps, form.payment_days_total)
+                const metrics = getPaymentMetrics(form.items, products)
+                const amount = sync ? calcAmountFromDays(form.payment_days_total, metrics) : form.amount_paid
+                setForm({ ...form, payment_status: ps, amount_paid: amount })
+              } else {
+                setForm({ ...form, payment_status: ps })
+              }
+            }}
+          >
             <option value="belum_lunas">Belum Lunas</option>
             <option value="lunas">Lunas</option>
           </select>
@@ -270,8 +320,20 @@ export default function OrdersPage() {
                 className="mb-2 w-full rounded-lg border border-slate-300 p-2"
                 placeholder="Total Jumlah Hari Bayar"
                 value={form.payment_days_total}
-                onChange={(e) => setForm({ ...form, payment_days_total: toNumberOrEmpty(e.target.value) })}
+                onChange={(e) => {
+                  const days = toNumberOrEmpty(e.target.value)
+                  const metrics = getPaymentMetrics(form.items, products)
+                  const amount = calcAmountFromDays(days, metrics)
+                  setForm({ ...form, payment_days_total: days, amount_paid: amount })
+                }}
               />
+              {paymentMetrics.targetDays > 0 && (
+                <p className="mb-2 text-xs text-slate-500">
+                  Target cicilan dari produk: {paymentMetrics.targetDays} hari · Nilai per hari ≈ Rp{' '}
+                  {Math.round(paymentMetrics.perDay).toLocaleString('id-ID')} (total order ÷ target hari). Ubah hari di atas
+                  untuk mengisi nominal otomatis; nominal tetap bisa diedit manual.
+                </p>
+              )}
               <label className="mb-1 block text-sm font-medium text-slate-700">Total Uang Yang Dibayarkan</label>
               <input
                 type="number"
@@ -299,9 +361,23 @@ export default function OrdersPage() {
                 }}
                 onChange={(selected) => {
                   const next = [...form.items]
-                  next[idx].product_id = selected?.value || ''
-                  next[idx].product_name = selected?.label || ''
-                  setForm({ ...form, items: next })
+                  const pid = selected?.value || ''
+                  const prod = products.find((pr) => String(pr.id) === pid)
+                  next[idx] = {
+                    ...next[idx],
+                    product_id: pid,
+                    product_name: selected?.label || '',
+                    unit_price: prod ? Number(prod.price) : null,
+                    product_payment_days_total: prod ? Number(prod.payment_days_total || 0) : null,
+                  }
+                  const sync = shouldAutoFillAmount(form.payment_status, form.payment_days_total)
+                  const metrics = getPaymentMetrics(next, products)
+                  const amount = sync ? calcAmountFromDays(form.payment_days_total, metrics) : form.amount_paid
+                  setForm({
+                    ...form,
+                    items: next,
+                    ...(sync ? { amount_paid: amount } : {}),
+                  })
                 }}
                 classNamePrefix="react-select"
               />
@@ -309,14 +385,31 @@ export default function OrdersPage() {
               <input type="number" min="1" className="w-full rounded-lg border border-slate-300 p-2" value={it.qty} onChange={(e) => {
                 const next = [...form.items]
                 next[idx].qty = toNumberOrEmpty(e.target.value)
-                setForm({ ...form, items: next })
+                const sync = shouldAutoFillAmount(form.payment_status, form.payment_days_total)
+                const metrics = getPaymentMetrics(next, products)
+                const amount = sync ? calcAmountFromDays(form.payment_days_total, metrics) : form.amount_paid
+                setForm({
+                  ...form,
+                  items: next,
+                  ...(sync ? { amount_paid: amount } : {}),
+                })
               }} />
             </div>
           ))}
           <button
             type="button"
             className="mb-4 inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700"
-            onClick={() => setForm({ ...form, items: [...form.items, { product_id: '', product_name: '', qty: 1 }] })}
+            onClick={() => {
+              const next = [...form.items, { product_id: '', product_name: '', qty: 1, unit_price: null, product_payment_days_total: null }]
+              const sync = shouldAutoFillAmount(form.payment_status, form.payment_days_total)
+              const metrics = getPaymentMetrics(next, products)
+              const amount = sync ? calcAmountFromDays(form.payment_days_total, metrics) : form.amount_paid
+              setForm({
+                ...form,
+                items: next,
+                ...(sync ? { amount_paid: amount } : {}),
+              })
+            }}
           >
             <PackagePlus size={16} /> Tambah Produk
           </button>
