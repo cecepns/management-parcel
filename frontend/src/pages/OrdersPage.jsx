@@ -13,6 +13,7 @@ const initForm = {
   customer_name: '',
   customer_phone: '',
   reseller_id: '',
+  reseller_name: '',
   payment_status: 'belum_lunas',
   payment_days_total: 0,
   amount_paid: 0,
@@ -54,7 +55,10 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState([])
   const [products, setProducts] = useState([])
   const [productSearch, setProductSearch] = useState('')
-  const [resellers, setResellers] = useState([])
+  const [filterResellerOptions, setFilterResellerOptions] = useState([])
+  const [formResellerOptions, setFormResellerOptions] = useState([])
+  const [filterResellerSearch, setFilterResellerSearch] = useState('')
+  const [formResellerSearch, setFormResellerSearch] = useState('')
   const [page, setPage] = useState(1)
   const [meta, setMeta] = useState({ total_pages: 1 })
   const [form, setForm] = useState(initForm)
@@ -64,8 +68,11 @@ export default function OrdersPage() {
   const [mode, setMode] = useState('create')
   const [customerNameSearch, setCustomerNameSearch] = useState('')
   const [filterResellerId, setFilterResellerId] = useState('')
+  const [filterResellerName, setFilterResellerName] = useState('')
   const debouncedCustomerName = useDebounce(customerNameSearch, 500)
   const debouncedProductSearch = useDebounce(productSearch, 500)
+  const debouncedFilterResellerSearch = useDebounce(filterResellerSearch, 1000)
+  const debouncedFormResellerSearch = useDebounce(formResellerSearch, 1000)
 
   const paymentMetrics = useMemo(() => getPaymentMetrics(form.items, products), [form.items, products])
 
@@ -85,8 +92,26 @@ export default function OrdersPage() {
   useEffect(() => { setPage(1) }, [debouncedCustomerName, filterResellerId])
   useEffect(() => {
     if (isReseller) return
-    api.get('/resellers.php?page=1&limit=100').then((r) => setResellers(r.data.data))
-  }, [isReseller])
+    const query = new URLSearchParams({
+      page: '1',
+      limit: '10',
+      q: debouncedFilterResellerSearch,
+    }).toString()
+    api.get(`/resellers.php?${query}`).then((r) => {
+      setFilterResellerOptions((r.data.data || []).map((item) => ({ value: String(item.id), label: item.name })))
+    })
+  }, [isReseller, debouncedFilterResellerSearch])
+  useEffect(() => {
+    if (isReseller) return
+    const query = new URLSearchParams({
+      page: '1',
+      limit: '10',
+      q: debouncedFormResellerSearch,
+    }).toString()
+    api.get(`/resellers.php?${query}`).then((r) => {
+      setFormResellerOptions((r.data.data || []).map((item) => ({ value: String(item.id), label: item.name })))
+    })
+  }, [isReseller, debouncedFormResellerSearch])
   useEffect(() => {
     const query = new URLSearchParams({
       page: '1',
@@ -127,6 +152,7 @@ export default function OrdersPage() {
       customer_name: d.customer_name || '',
       customer_phone: d.customer_phone || '',
       reseller_id: d.reseller_id ? String(d.reseller_id) : '',
+      reseller_name: d.reseller_name || '',
       payment_status: d.payment_status || 'belum_lunas',
       payment_days_total: Number(d.payment_days_total || 0),
       amount_paid: Number(d.amount_paid || 0),
@@ -164,7 +190,6 @@ export default function OrdersPage() {
       </div>
     ))
   }
-  const resellerOptions = resellers.map((r) => ({ value: String(r.id), label: r.name }))
   const productOptions = products.map((p) => ({ value: String(p.id), label: p.name }))
 
   return (
@@ -177,9 +202,16 @@ export default function OrdersPage() {
               isClearable
               isSearchable
               placeholder="Filter reseller..."
-              options={resellerOptions}
-              value={resellerOptions.find((opt) => opt.value === String(filterResellerId)) || null}
-              onChange={(selected) => setFilterResellerId(selected?.value || '')}
+              options={filterResellerOptions}
+              value={filterResellerOptions.find((opt) => opt.value === String(filterResellerId))
+                || (filterResellerId ? { value: String(filterResellerId), label: filterResellerName || `Reseller #${filterResellerId}` } : null)}
+              onInputChange={(inputValue, meta) => {
+                if (meta.action === 'input-change') setFilterResellerSearch(inputValue)
+              }}
+              onChange={(selected) => {
+                setFilterResellerId(selected?.value || '')
+                setFilterResellerName(selected?.label || '')
+              }}
             />
           </div>
         )}
@@ -284,12 +316,20 @@ export default function OrdersPage() {
                 isClearable
                 isSearchable
                 placeholder="Pilih reseller (opsional)"
-                options={resellerOptions}
-                value={resellerOptions.find((opt) => opt.value === String(form.reseller_id)) || null}
-                onChange={(selected) => setForm({ ...form, reseller_id: selected?.value || '' })}
+                options={formResellerOptions}
+                value={formResellerOptions.find((opt) => opt.value === String(form.reseller_id))
+                  || (form.reseller_id ? { value: String(form.reseller_id), label: form.reseller_name || `Reseller #${form.reseller_id}` } : null)}
+                onInputChange={(inputValue, meta) => {
+                  if (meta.action === 'input-change') setFormResellerSearch(inputValue)
+                }}
+                onChange={(selected) => setForm({
+                  ...form,
+                  reseller_id: selected?.value || '',
+                  reseller_name: selected?.label || '',
+                })}
                 classNamePrefix="react-select"
               />
-              <p className="mt-1 text-xs text-slate-500">Kosongkan untuk pelanggan langsung (tanpa reseller)</p>
+              <p className="mt-1 text-xs text-slate-500">Ketik nama reseller untuk cari via API (debounce 1 detik). Kosongkan untuk pelanggan langsung.</p>
             </div>
           )}
           <label className="mb-1 block text-sm font-medium text-slate-700">Status Pembayaran</label>

@@ -20,17 +20,18 @@ if (!$reseller) {
     json_response(['message' => 'Reseller tidak ditemukan'], 404);
 }
 
+$targetDaysExpr = sql_order_payment_days_target('o');
 $ordersStmt = $db->prepare(
     "SELECT o.id,
             o.order_date,
             o.total_amount,
             o.payment_status,
             o.payment_days_total,
-            o.payment_days_target,
+            {$targetDaysExpr} AS payment_days_target,
             o.amount_paid,
             GREATEST(o.total_amount - o.amount_paid, 0) AS remaining_amount,
             CASE WHEN o.payment_status = 'lunas' THEN 0
-                ELSE GREATEST(COALESCE(o.payment_days_target, 0) - COALESCE(o.payment_days_total, 0), 0) END AS payment_days_remaining,
+                ELSE GREATEST({$targetDaysExpr} - COALESCE(o.payment_days_total, 0), 0) END AS payment_days_remaining,
             c.id AS customer_id,
             c.name AS customer_name,
             c.phone AS customer_phone

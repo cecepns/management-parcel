@@ -57,10 +57,12 @@ try {
     $summaryStmt->execute($params);
     $summary = $summaryStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
+    $targetDaysExpr = sql_order_payment_days_target('o');
     $daysRemainingSql = "CASE WHEN o.payment_status = 'lunas' THEN 0
-        ELSE GREATEST(COALESCE(o.payment_days_target, 0) - COALESCE(o.payment_days_total, 0), 0) END";
+        ELSE GREATEST({$targetDaysExpr} - COALESCE(o.payment_days_total, 0), 0) END";
 
-    $sql = "SELECT o.id, o.order_date, o.total_amount, o.amount_paid, o.payment_days_total, o.payment_days_target,
+    $sql = "SELECT o.id, o.order_date, o.total_amount, o.amount_paid, o.payment_days_total,
+               {$targetDaysExpr} AS payment_days_target,
                o.payment_status,
                GREATEST(o.total_amount - o.amount_paid, 0) AS remaining_amount,
                {$daysRemainingSql} AS payment_days_remaining,

@@ -13,5 +13,6 @@ require_once __DIR__ . '/../../core/Database.php';
 require_once __DIR__ . '/../../helpers/Response.php';
 require_once __DIR__ . '/../../helpers/Auth.php';
 require_once __DIR__ . '/../../helpers/Upload.php';
+require_once __DIR__ . '/../../helpers/InstallmentSql.php';
 
 $db = Database::connection();

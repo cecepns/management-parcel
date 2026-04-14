@@ -8,10 +8,15 @@ if ($id <= 0) {
     json_response(['message' => 'ID tidak valid'], 422);
 }
 
+$targetDaysExpr = sql_order_payment_days_target('o');
 $daysRemainingSql = "CASE WHEN o.payment_status = 'lunas' THEN 0
-    ELSE GREATEST(COALESCE(o.payment_days_target, 0) - COALESCE(o.payment_days_total, 0), 0) END";
+    ELSE GREATEST({$targetDaysExpr} - COALESCE(o.payment_days_total, 0), 0) END";
 
-$sql = "SELECT o.*, c.name AS customer_name, c.phone AS customer_phone, r.name AS reseller_name,
+$sql = "SELECT o.id, o.customer_id, o.reseller_id, o.order_date, o.total_amount, o.payment_status,
+        o.payment_days_total,
+        {$targetDaysExpr} AS payment_days_target,
+        o.amount_paid, o.notes, o.created_at, o.updated_at,
+        c.name AS customer_name, c.phone AS customer_phone, r.name AS reseller_name,
         GREATEST(o.total_amount - o.amount_paid, 0) AS remaining_amount,
         {$daysRemainingSql} AS payment_days_remaining
         FROM orders o
