@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
 import toast from 'react-hot-toast'
@@ -24,10 +24,13 @@ export default function ReportsPage() {
   const isReseller = localStorage.getItem('auth_role') === 'reseller'
   const [yearDate, setYearDate] = useState(new Date())
   const [rows, setRows] = useState([])
-  const [resellers, setResellers] = useState([])
+  const [resellerOptions, setResellerOptions] = useState([])
+  const [resellerSearch, setResellerSearch] = useState('')
   const [resellerId, setResellerId] = useState('')
+  const [resellerName, setResellerName] = useState('')
   const [customerQ, setCustomerQ] = useState('')
   const debouncedCustomerQ = useDebounce(customerQ, 500)
+  const debouncedResellerSearch = useDebounce(resellerSearch, 1000)
   const [page, setPage] = useState(1)
   const [meta, setMeta] = useState({ total_pages: 1, total: 0 })
   const [summary, setSummary] = useState(emptySummary)
@@ -35,13 +38,15 @@ export default function ReportsPage() {
 
   useEffect(() => {
     if (isReseller) return
-    api.get('/resellers.php?page=1&limit=100').then((r) => setResellers(r.data.data))
-  }, [isReseller])
-
-  const resellerOptions = useMemo(
-    () => resellers.map((r) => ({ value: String(r.id), label: r.name })),
-    [resellers],
-  )
+    const query = new URLSearchParams({
+      page: '1',
+      limit: '10',
+      q: debouncedResellerSearch,
+    }).toString()
+    api.get(`/resellers.php?${query}`).then((r) => {
+      setResellerOptions((r.data.data || []).map((item) => ({ value: String(item.id), label: item.name })))
+    })
+  }, [isReseller, debouncedResellerSearch])
 
   const getReport = useCallback(async (targetPage) => {
     const selectedYear = yearDate.getFullYear()
@@ -186,8 +191,15 @@ export default function ReportsPage() {
               isSearchable
               placeholder="Semua reseller"
               options={resellerOptions}
-              value={resellerOptions.find((opt) => opt.value === resellerId) || null}
-              onChange={(selected) => setResellerId(selected?.value || '')}
+              value={resellerOptions.find((opt) => opt.value === resellerId)
+                || (resellerId ? { value: resellerId, label: resellerName || `Reseller #${resellerId}` } : null)}
+              onInputChange={(inputValue, meta) => {
+                if (meta.action === 'input-change') setResellerSearch(inputValue)
+              }}
+              onChange={(selected) => {
+                setResellerId(selected?.value || '')
+                setResellerName(selected?.label || '')
+              }}
             />
           </div>
         )}
